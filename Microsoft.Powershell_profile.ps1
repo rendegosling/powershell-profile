@@ -1,5 +1,5 @@
 # Profile version (Semantic Versioning)
-$profileVersion = "1.0.8"
+$profileVersion = "1.0.9"
 
 # Constants
 if (-not (Get-Variable -Name GITHUB_PROFILE_URL -ErrorAction SilentlyContinue)) {
@@ -65,7 +65,10 @@ function Update-PowerShell {
             $installerUri = "https://github.com/PowerShell/PowerShell/releases/download/v$latestVersion/PowerShell-$latestVersion-win-x64.msi"
             $installerPath = Join-Path $env:TEMP "PowerShell-$latestVersion-win-x64.msi"
             Invoke-WebRequest -Uri $installerUri -OutFile $installerPath
-            Start-Process msiexec.exe -ArgumentList "/i `"$installerPath`" /qn" -Wait
+            
+            # Run installer with elevated privileges
+            Start-Process msiexec.exe -ArgumentList "/i `"$installerPath`" /qn" -Verb RunAs -Wait
+            
             Remove-Item $installerPath
             Write-Host "PowerShell updated to version $latestVersion. Please restart your terminal." -ForegroundColor Green
             return $true
