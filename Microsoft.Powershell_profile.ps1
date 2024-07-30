@@ -1,5 +1,5 @@
 # Profile version (Semantic Versioning)
-$profileVersion = "1.0.6"
+$profileVersion = "1.0.8"
 
 # Constants
 if (-not (Get-Variable -Name GITHUB_PROFILE_URL -ErrorAction SilentlyContinue)) {
@@ -27,46 +27,78 @@ function Test-GitHubConnection {
 # Function to download and update the profile
 function Update-Profile {
     try {
-        Write-Host "Downloading profile from $global:GITHUB_PROFILE_URL" -ForegroundColor Yellow
+        Write-Host "Checking for profile updates..." -ForegroundColor Yellow
         $newProfile = Invoke-WebRequest -Uri $global:GITHUB_PROFILE_URL -UseBasicParsing | Select-Object -ExpandProperty Content
-        Write-Host "Profile content downloaded successfully." -ForegroundColor Yellow
-        
-        Write-Host "Checking for new version..." -ForegroundColor Yellow
         $newVersionMatch = $newProfile -match '\$profileVersion\s*=\s*"([\d\.]+)"'
         if ($newVersionMatch) {
             $newVersion = $Matches[1]
             if ([System.Management.Automation.SemanticVersion]$newVersion -gt [System.Management.Automation.SemanticVersion]$profileVersion) {
-                Write-Host "New version found: $newVersion" -ForegroundColor Yellow
+                Write-Host "New profile version found: $newVersion" -ForegroundColor Yellow
                 Set-Content -Path $PROFILE -Value $newProfile
                 Write-Host "Profile updated successfully to version $newVersion." -ForegroundColor Green
                 return $true
             } else {
-                Write-Host "Profile is already up to date (version $profileVersion)." -ForegroundColor Green
+                Write-Host "Profile is up to date (version $profileVersion)." -ForegroundColor Green
                 return $false
             }
         } else {
-            Write-Host "Failed to parse new profile version. Content of new profile:" -ForegroundColor Red
-            Write-Host $newProfile
+            Write-Host "Failed to parse new profile version." -ForegroundColor Red
             return $false
         }
     } catch {
         Write-Host "Failed to update profile: $_" -ForegroundColor Red
-        Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
         return $false
     }
 }
 
-# Run the GitHub connection test when PowerShell starts and store the result
+# Function to check for PowerShell updates and install if available
+function Update-PowerShell {
+    try {
+        $currentVersion = $PSVersionTable.PSVersion
+        $metadataUri = "https://raw.githubusercontent.com/PowerShell/PowerShell/master/tools/metadata.json"
+        $metadata = Invoke-RestMethod -Uri $metadataUri
+        $latestVersion = [System.Management.Automation.SemanticVersion]$metadata.StableReleaseTag.Substring(1)
+
+        if ($latestVersion -gt $currentVersion) {
+            Write-Host "New PowerShell version available: $latestVersion" -ForegroundColor Yellow
+            Write-Host "Updating PowerShell..." -ForegroundColor Yellow
+            $installerUri = "https://github.com/PowerShell/PowerShell/releases/download/v$latestVersion/PowerShell-$latestVersion-win-x64.msi"
+            $installerPath = Join-Path $env:TEMP "PowerShell-$latestVersion-win-x64.msi"
+            Invoke-WebRequest -Uri $installerUri -OutFile $installerPath
+            Start-Process msiexec.exe -ArgumentList "/i `"$installerPath`" /qn" -Wait
+            Remove-Item $installerPath
+            Write-Host "PowerShell updated to version $latestVersion. Please restart your terminal." -ForegroundColor Green
+            return $true
+        } else {
+            Write-Host "PowerShell is up to date (version $currentVersion)." -ForegroundColor Green
+            return $false
+        }
+    } catch {
+        Write-Host "Failed to update PowerShell: $_" -ForegroundColor Red
+        return $false
+    }
+}
+
+# Main update process
 $global:GitHubConnected = Test-GitHubConnection
 
-# Update profile if GitHub is reachable and profile hasn't been updated yet
-if ($global:GitHubConnected -and -not $global:ProfileUpdated) {
-    $updated = Update-Profile
-    if ($updated) {
-        $global:ProfileUpdated = $true
-        Write-Host "Profile has been updated. Reloading..." -ForegroundColor Yellow
-        . $PROFILE
-        return
+if ($global:GitHubConnected) {
+    # Layer 1: Update PowerShell itself
+    $powershellUpdated = Update-PowerShell
+
+    # Layer 2: Update PowerShell profile
+    if (-not $global:ProfileUpdated) {
+        $profileUpdated = Update-Profile
+        if ($profileUpdated) {
+            $global:ProfileUpdated = $true
+            Write-Host "Profile has been updated. Reloading..." -ForegroundColor Yellow
+            . $PROFILE
+            return
+        }
+    }
+
+    if ($powershellUpdated) {
+        Write-Host "Please restart your terminal to use the updated PowerShell version." -ForegroundColor Yellow
     }
 }
 
