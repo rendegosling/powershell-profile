@@ -32,10 +32,13 @@ function Update-Profile {
         $newVersionMatch = $newProfile -match '\$profileVersion\s*=\s*"([\d\.]+)"'
         if ($newVersionMatch) {
             $newVersion = $Matches[1]
+            Write-Host "Remote version: $newVersion, Local version: $profileVersion" -ForegroundColor Yellow
             if ([System.Management.Automation.SemanticVersion]$newVersion -gt [System.Management.Automation.SemanticVersion]$profileVersion) {
                 Write-Host "New profile version found: $newVersion" -ForegroundColor Yellow
                 Set-Content -Path $PROFILE -Value $newProfile
                 Write-Host "Profile updated successfully to version $newVersion." -ForegroundColor Green
+                Write-Host "Reloading profile..." -ForegroundColor Yellow
+                . $PROFILE
                 return $true
             } else {
                 Write-Host "Profile is up to date (version $profileVersion)." -ForegroundColor Green
@@ -85,21 +88,17 @@ function Update-PowerShell {
 # Main update process
 $global:GitHubConnected = Test-GitHubConnection
 
-if ($global:GitHubConnected) {
-    # Layer 1: Update PowerShell itself
-    $powershellUpdated = Update-PowerShell
-
-    # Layer 2: Update PowerShell profile
-    if (-not $global:ProfileUpdated) {
-        $profileUpdated = Update-Profile
-        if ($profileUpdated) {
-            $global:ProfileUpdated = $true
-            Write-Host "Profile has been updated. Reloading..." -ForegroundColor Yellow
-            . $PROFILE
-            return
-        }
+if ($global:GitHubConnected -and -not $global:ProfileUpdated) {
+    $profileUpdated = Update-Profile
+    if ($profileUpdated) {
+        $global:ProfileUpdated = $true
+        return
     }
+}
 
+if ($global:GitHubConnected) {
+    # Update PowerShell itself
+    $powershellUpdated = Update-PowerShell
     if ($powershellUpdated) {
         Write-Host "Please restart your terminal to use the updated PowerShell version." -ForegroundColor Yellow
     }
